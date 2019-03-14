@@ -3,12 +3,17 @@ function initNotifications() {
   markNotificationsAsRead();
   initReactions();
   listenForNotificationsBellClick();
+  initPagination();
 }
 
 function markNotificationsAsRead() {
   setTimeout(function () {
     if (document.getElementById('notifications-container')) {
       var xmlhttp;
+      var locationAsArray = window.location.pathname.split("/");
+      // Use regex to ensure only numbers in the original string are converted to integers
+      var parsedLastParam = parseInt(locationAsArray[locationAsArray.length - 1].replace(/[^0-9]/g, ''), 10);
+
       if (window.XMLHttpRequest) {
         xmlhttp = new XMLHttpRequest();
       } else {
@@ -19,11 +24,15 @@ function markNotificationsAsRead() {
 
       var csrfToken = document.querySelector("meta[name='csrf-token']").content;
 
-      xmlhttp.open('Post', '/notifications/reads', true);
+      if(Number.isInteger(parsedLastParam)) {
+        xmlhttp.open('Post', '/notifications/reads?org_id=' + parsedLastParam, true);
+      } else {
+        xmlhttp.open('Post', '/notifications/reads', true);
+      }
       xmlhttp.setRequestHeader('X-CSRF-Token', csrfToken);
       xmlhttp.send();
     }
-  }, 250);
+  }, 450);
 }
 
 function fetchNotificationsCount() {
@@ -67,6 +76,7 @@ function initReactions() {
         var butt = butts[i];
         butt.onclick = function (event) {
           event.preventDefault();
+          sendHapticMessage('medium');
           var thisButt = this;
           thisButt.classList.add('reacted');
 
@@ -115,4 +125,21 @@ function listenForNotificationsBellClick() {
       document.getElementById('notifications-number').classList.remove('showing');
     };
   }, 180);
+}
+
+function initPagination() {
+  var el = document.getElementById("notifications-pagination")
+  if (el) {
+    window.fetch(el.dataset.paginationPath, {
+      method: 'GET',
+      credentials: 'same-origin'
+    }).then(function (response) {
+      if (response.status === 200) {
+        response.text().then(function(html){
+          el.innerHTML = html
+          initReactions();
+        });
+      }
+    });
+  }
 }

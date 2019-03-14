@@ -10,7 +10,7 @@ RSpec.describe "Dashboards", type: :request do
     context "when not logged in" do
       it "redirects to /enter" do
         get "/dashboard"
-        is_expected.to redirect_to("/enter")
+        expect(response).to redirect_to("/enter")
       end
     end
 
@@ -40,7 +40,7 @@ RSpec.describe "Dashboards", type: :request do
     context "when not logged in" do
       it "redirects to /enter" do
         get "/dashboard/organization"
-        is_expected.to redirect_to("/enter")
+        expect(response).to redirect_to("/enter")
       end
     end
 
@@ -50,7 +50,7 @@ RSpec.describe "Dashboards", type: :request do
         article.update(organization_id: organization.id)
         login_as user
         get "/dashboard/organization"
-        expect(response.body).to include CGI.escapeHTML(organization.name.upcase)
+        expect(response.body).to include "#{CGI.escapeHTML(organization.name)} ("
       end
     end
   end
@@ -59,7 +59,7 @@ RSpec.describe "Dashboards", type: :request do
     context "when not logged in" do
       it "redirects to /enter" do
         get "/dashboard/following_users"
-        is_expected.to redirect_to("/enter")
+        expect(response).to redirect_to("/enter")
       end
     end
 
@@ -70,6 +70,14 @@ RSpec.describe "Dashboards", type: :request do
         get "/dashboard/following_users"
         expect(response.body).to include CGI.escapeHTML(second_user.name)
       end
+      it "renders the current user's tag followings" do
+        user.follow second_user
+        tag = create(:tag)
+        user.follow tag
+        login_as user
+        get "/dashboard/following"
+        expect(response.body).to include CGI.escapeHTML(tag.name)
+      end
     end
   end
 
@@ -77,7 +85,7 @@ RSpec.describe "Dashboards", type: :request do
     context "when not logged in" do
       it "redirects to /enter" do
         get "/dashboard/user_followers"
-        is_expected.to redirect_to("/enter")
+        expect(response).to redirect_to("/enter")
       end
     end
 
@@ -87,6 +95,31 @@ RSpec.describe "Dashboards", type: :request do
         login_as user
         get "/dashboard/user_followers"
         expect(response.body).to include CGI.escapeHTML(second_user.name)
+      end
+    end
+  end
+
+  describe "GET /dashboard/pro" do
+    context "when not logged in" do
+      it "raises unauthorized" do
+        get "/dashboard/pro"
+        expect(response).to redirect_to("/enter")
+      end
+    end
+
+    context "when user does not have permission" do
+      it "raises unauthorized" do
+        login_as user
+        expect { get "/dashboard/pro" }.to raise_error(Pundit::NotAuthorizedError)
+      end
+    end
+
+    context "when user has pro permission" do
+      it "shows page properly" do
+        user.add_role(:pro)
+        login_as user
+        get "/dashboard/pro"
+        expect(response.body).to include("pro")
       end
     end
   end

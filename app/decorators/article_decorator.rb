@@ -22,7 +22,7 @@ class ArticleDecorator < ApplicationDecorator
   end
 
   def url
-    "https://dev.to#{path}"
+    "https://#{ApplicationConfig['APP_DOMAIN']}#{path}"
   end
 
   def liquid_tags_used
@@ -50,5 +50,9 @@ class ArticleDecorator < ApplicationDecorator
                  "regular"
                end
     "?utm_source=#{place}&utm_medium=internal&utm_campaign=#{campaign}&booster_org=#{organization&.slug}"
+  end
+
+  def published_at_int
+    published_at.to_i
   end
 end

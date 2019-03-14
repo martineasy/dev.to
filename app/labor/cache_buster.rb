@@ -5,6 +5,7 @@ class CacheBuster
 
   def bust(path)
     return unless Rails.env.production?
+
     HTTParty.post("https://api.fastly.com/purge/https://dev.to#{path}",
     headers: { "Fastly-Key" => ApplicationConfig["FASTLY_API_KEY"] })
     HTTParty.post("https://api.fastly.com/purge/https://dev.to#{path}?i=i",
@@ -12,10 +13,8 @@ class CacheBuster
   end
 
   def bust_comment(commentable, username)
-    if commentable.featured_number.to_i > 5.hours.ago.to_i
+    if Article.where(published: true).order("hotness_score DESC").limit(3).pluck(:id).include?(commentable.id)
       bust("/")
-      bust("/?i=i")
-      bust("?i=i")
     end
     if commentable.decorate.cached_tag_list_array.include?("discuss") &&
         commentable.featured_number.to_i > 35.hours.ago.to_i
@@ -25,7 +24,7 @@ class CacheBuster
     end
     bust("#{commentable.path}/comments/")
     bust(commentable.path.to_s)
-    commentable.comments.each do |c|
+    commentable.comments.find_each do |c|
       bust(c.path)
       bust(c.path + "?i=i")
     end
@@ -51,9 +50,10 @@ class CacheBuster
     bust_tag_pages(article)
     bust("/api/articles/#{article.id}")
     bust("/api/articles/by_path?url=#{article.path}")
-
-    article.collection&.articles&.each do |a|
-      bust(a.path)
+    if article.collection_id
+      article.collection&.articles&.find_each do |a|
+        bust(a.path)
+      end
     end
   end
 
@@ -69,22 +69,21 @@ class CacheBuster
         bust("/top/#{timeframe[1]}?i=i")
         bust("/top/#{timeframe[1]}/?i=i")
       end
-      if Article.where(published: true).where("published_at > ?", timeframe[0]).
-          order("hotness_score DESC").limit(2).pluck(:id).include?(article.id)
-        bust("/")
-        bust("?i=i")
-      end
     end
     if article.published && article.published_at > 1.hour.ago
       bust("/latest")
       bust("/latest?i=i")
     end
+    if Article.where(published: true).order("hotness_score DESC").limit(4).pluck(:id).include?(article.id)
+      bust("/")
+    end
   end
 
   def bust_tag_pages(article)
     return unless article.published
+
     article.tag_list.each do |tag|
-      if article.published_at.to_i > 3.minutes.ago.to_i
+      if article.published_at.to_i > 2.minutes.ago.to_i
         bust("/t/#{tag}/latest")
         bust("/t/#{tag}/latest?i=i")
       end
@@ -98,11 +97,12 @@ class CacheBuster
             bust("/api/articles?tag=#{tag}&top=#{i}")
           end
         end
-        if Article.where(published: true).where("published_at > ?", timeframe[0]).tagged_with(tag).
-            order("hotness_score DESC").limit(3).pluck(:id).include?(article.id)
-          bust("/")
-          bust("?i=i")
-        end
+      end
+      if rand(2) == 1 &&
+          Article.where(published: true).tagged_with(tag).
+              order("hotness_score DESC").limit(2).pluck(:id).include?(article.id)
+        bust("/t/#{tag}")
+        bust("/t/#{tag}?i=i")
       end
     end
   end

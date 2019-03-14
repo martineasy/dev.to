@@ -1,83 +1,66 @@
 class NotificationsController < ApplicationController
-  # No authorization required for entirely public controller
-  before_action :create_enricher
-
+  # No authorization required because we provide authentication on notifications page
   def index
     if user_signed_in?
       @notifications_index = true
-      @user = if params[:username] && current_user.admin?
-                User.find_by_username(params[:username])
-              else
-                current_user
-              end
-      @activities = cached_activities
-      @last_user_reaction = @user.reactions.pluck(:id).last
-      @last_user_comment = @user.comments.pluck(:id).last
+      @user = user_to_view
+      if params[:page]
+        num = 45
+        notified_at_offset = Notification.find(params[:page])&.notified_at
+      else
+        num = 10
+      end
+      @notifications = if (params[:org_id].present? || params[:filter] == "org") && allowed_user?
+                         organization_notifications
+                       elsif params[:org_id].blank? && params[:filter].present?
+                         filtered_notifications
+                       else
+                         Notification.where(user_id: @user.id).order("notified_at DESC")
+                       end
+      @last_user_reaction = @user.reactions.last&.id
+      @last_user_comment = @user.comments.last&.id
+      @notifications = @notifications.where("notified_at < ?", notified_at_offset) if notified_at_offset
+      @notifications = NotificationDecorator.decorate_collection(@notifications.limit(num))
+      org_id = params[:org_id] || current_user.organization_id
+      # in the future this can be an array of numbers, when people can belong to multiple orgs.
+      @total_org_unread = Notification.where(organization_id: org_id, user_id: nil, read: false).count
+      render partial: "notifications_list" if notified_at_offset
     end
   end
 
   private
 
-  def cached_activities
-    cache_name = "notifications-fetch-#{@user.id}-#{@user.last_notification_activity}"
-    results = Rails.cache.fetch(cache_name, expires_in: 5.hours) do
-      feed_activities
+  def user_to_view
+    if params[:username] && current_user.admin?
+      User.find_by_username(params[:username])
+    else
+      current_user
     end
-    @enricher.enrich_aggregated_activities(results)
   end
 
-  def feed_activities
-    return [] if Rails.env.test?
-    feed = StreamRails.feed_manager.get_notification_feed(@user.id)
-    feed.get(limit: 45)["results"]
+  def filtered_notifications
+    if params[:filter].to_s.casecmp("posts").zero?
+      Notification.where(user_id: @user.id, notifiable_type: "Article", action: "Published").
+        order("notified_at DESC")
+    elsif params[:filter].to_s.casecmp("comments").zero?
+      Notification.where(user_id: @user.id, notifiable_type: "Comment", action: nil). # Nil action means not reaction in this context
+        or(Notification.where(user_id: @user.id, notifiable_type: "Mention")).
+        order("notified_at DESC")
+    end
   end
 
-  def create_enricher
-    @enricher = StreamRails::Enrich.new
+  def organization_notifications
+    if params[:filter].to_s.casecmp("comments").zero?
+      Notification.where(organization_id: params[:org_id], notifiable_type: "Comment", action: nil, user_id: nil). # Nil action means not reaction in this context
+        or(Notification.where(organization_id: params[:org_id], notifiable_type: "Mention", user_id: nil)).
+        order("notified_at DESC")
+    else
+      Notification.where(organization_id: params[:org_id], user_id: nil).
+        order("notified_at DESC")
+    end
   end
-end
 
-module StreamRails
-  class Enrich
-    def retrieve_objects(references)
-      Hash[
-        references.map do |model, ids|
-          [model, Hash[construct_query(model, ids).map { |i| [i.id.to_s, i] }]]
-        end
-      ]
-    end
-
-    def construct_query(model, ids)
-      send("get_#{model.downcase}", ids)
-    rescue NoMethodError
-      model.classify.constantize.where(id: ids.keys).to_a
-    end
-
-    private
-
-    def get_user(ids)
-      User.where(id: ids.keys).select(:id, :name, :username, :profile_image).to_a
-    end
-
-    def get_comment(ids)
-      Comment.where(id: ids.keys).
-        select(:id, :id_code, :user_id, :processed_html,
-               :commentable_id, :commentable_type,
-               :updated_at, :ancestry).
-        includes(:user, :commentable).to_a
-    end
-
-    def get_reaction(ids)
-      Reaction.where(id: ids.keys).includes(:reactable, :user).to_a
-    end
-
-    def get_article(ids)
-      Article.where(id: ids.keys).
-        select(:id, :title, :path, :user_id, :updated_at, :cached_tag_list).to_a
-    end
-
-    def get_broadcast(ids)
-      Broadcast.where(id: ids.keys).to_a
-    end
+  def allowed_user?
+    @user.organization_id == params[:org_id] || @user.admin?
   end
 end

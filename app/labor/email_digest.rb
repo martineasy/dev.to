@@ -16,6 +16,7 @@ class EmailDigest
     @users.find_each do |user|
       user_email_heuristic = EmailLogic.new(user).analyze
       next unless user_email_heuristic.should_receive_email?
+
       articles = user_email_heuristic.articles_to_send
       begin
         DigestMailer.digest_email(user, articles).deliver
@@ -28,6 +29,6 @@ class EmailDigest
   private
 
   def get_users
-    User.where(email_digest_periodic: true)
+    User.where(email_digest_periodic: true).where.not(email: "")
   end
 end

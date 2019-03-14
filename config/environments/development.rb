@@ -8,9 +8,6 @@ Rails.application.configure do
   # Verifies that versions and hashed value of the package contents in the project's package.json
   config.webpacker.check_yarn_integrity = yarn_integrity_enabled?
 
-  # Replace with a lambda or method name defined in ApplicationController
-  # to implement access control for the Flipflop dashboard.
-  config.flipflop.dashboard_access_filter = nil
   # Settings specified here will take precedence over those in config/application.rb.
 
   # In the development environment your application's code is reloaded on
@@ -92,9 +89,8 @@ Rails.application.configure do
   config.file_watcher = ActiveSupport::EventedFileUpdateChecker
 
   # Install the Timber.io logger
-  send_logs_to_timber = false # <---- set to false to stop sending dev logs to Timber.io
-
-  log_device = send_logs_to_timber ? Timber::LogDevices::HTTP.new(ENV["TIMBER"]) : STDOUT
+  send_logs_to_timber = ENV["SEND_LOGS_TO_TIMBER"] || "false" # <---- set to false to stop sending dev logs to Timber.io
+  log_device = send_logs_to_timber == "true" ? Timber::LogDevices::HTTP.new(ENV["TIMBER"]) : STDOUT
   logger = Timber::Logger.new(log_device)
   logger.level = config.log_level
   config.logger = ActiveSupport::TaggedLogging.new(logger)

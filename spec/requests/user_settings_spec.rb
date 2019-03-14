@@ -58,9 +58,57 @@ RSpec.describe "UserSettings", type: :request do
       expect(user.summary).to eq("Hello new summary")
     end
 
+    it "updates profile_updated_at" do
+      user.update_column(:profile_updated_at, 2.weeks.ago)
+      put "/users/#{user.id}", params: { user: { tab: "profile", summary: "Hello new summary" } }
+      expect(user.reload.profile_updated_at).to be > 2.minutes.ago
+    end
+
     it "updates username to too short username" do
       put "/users/#{user.id}", params: { user: { tab: "profile", username: "h" } }
       expect(response.body).to include("Username is too short")
+    end
+
+    context "when requesting an export of the articles" do
+      def send_request(flag = true)
+        put "/users/#{user.id}", params: {
+          user: { tab: "misc", export_requested: flag }
+        }
+      end
+
+      it "updates export_requested flag" do
+        send_request
+        expect(user.reload.export_requested).to be(true)
+      end
+
+      it "displays a flash with a reminder for the user to expect an email" do
+        send_request
+        expect(flash[:notice]).to include("The export will be emailed to you shortly.")
+      end
+
+      it "hides the checkbox" do
+        send_request
+        follow_redirect!
+        expect(response.body).not_to include("Request an export of your posts")
+      end
+
+      it "tells the user they recently requested an export" do
+        send_request
+        follow_redirect!
+        expect(response.body).to include("You have recently requested an export")
+      end
+
+      it "sends an email" do
+        run_background_jobs_immediately do
+          expect { send_request }.to change { ActionMailer::Base.deliveries.count }.by(1)
+        end
+      end
+
+      it "does not send an email if there was no request" do
+        run_background_jobs_immediately do
+          expect { send_request(false) }.not_to(change { ActionMailer::Base.deliveries.count })
+        end
+      end
     end
   end
 

@@ -8,14 +8,9 @@ end
 
 task periodic_cache_bust: :environment do
   cache_buster = CacheBuster.new
-  cache_buster.bust("/enter")
-  cache_buster.bust("/new")
-  cache_buster.bust("/dashboard")
-  cache_buster.bust("/users/auth/twitter")
-  cache_buster.bust("/users/auth/github")
-  cache_buster.bust("/feed")
-  cache_buster.bust("/feed")
   cache_buster.bust("/feed.xml")
+  cache_buster.bust("/badge")
+  cache_buster.bust("/shecoded")
 end
 
 task hourly_bust: :environment do
@@ -24,7 +19,7 @@ end
 
 task fetch_all_rss: :environment do
   Rails.application.eager_load!
-  RssReader.get_all_articles
+  RssReader.get_all_articles(false) # False means don't force fetch. Fetch "random" subset instead of all of them.
 end
 
 task resave_supported_tags: :environment do
@@ -53,7 +48,7 @@ task renew_hired_articles: :environment do
 end
 
 task clear_memory_if_too_high: :environment do
-  if Rails.cache.stats.flatten[1]["bytes"].to_i > 4600000000
+  if Rails.cache.stats.flatten[1]["bytes"].to_i > 9650000000
     Rails.cache.clear
   end
 end
@@ -68,12 +63,16 @@ end
 
 task send_email_digest: :environment do
   return if Time.current.wday < 3
+
   EmailDigest.send_periodic_digest_email
 end
 
 task award_badges: :environment do
   BadgeRewarder.award_yearly_club_badges
   BadgeRewarder.award_beloved_comment_badges
+  BadgeRewarder.award_streak_badge(4)
+  BadgeRewarder.award_streak_badge(8)
+  BadgeRewarder.award_streak_badge(16)
 end
 
 # rake award_top_seven_badges["ben jess peter mac liana andy"]
@@ -92,6 +91,14 @@ task :award_contributor_badges, [:arg1] => :environment do |_t, args|
   puts "Done!"
 end
 
+# rake award_fab_five_badges["ben jess peter mac liana andy"]
+task :award_fab_five_badges, [:arg1] => :environment do |_t, args|
+  usernames = args[:arg1].split(" ")
+  puts "Awarding fab 5 badges to #{usernames}"
+  BadgeRewarder.award_fab_five_badges(usernames)
+  puts "Done!"
+end
+
 # this task is meant to be scheduled daily
 task award_contributor_badges_from_github: :environment do
   BadgeRewarder.award_contributor_badges_from_github
@@ -102,7 +109,7 @@ task remove_old_html_variant_data: :environment do
   HtmlVariantSuccess.where("created_at < ?", 1.week.ago).destroy_all
   HtmlVariant.find_each do |html_variant|
     if html_variant.html_variant_successes.size > 3
-    html_variant.calculate_success_rate!
+      html_variant.calculate_success_rate!
     end
   end
 end

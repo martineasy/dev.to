@@ -17,6 +17,8 @@ class AsyncInfoController < ApplicationController
       remember_me(current_user)
     end
     @user = current_user.decorate
+    # Updates article analytics periodically:
+    occasionally_update_analytics
     respond_to do |format|
       format.json do
         render json: {
@@ -36,14 +38,16 @@ class AsyncInfoController < ApplicationController
         username: @user.username,
         profile_image_90: ProfileImage.new(@user).get(90),
         followed_tag_names: @user.cached_followed_tag_names,
-        followed_tags: @user.cached_followed_tags.to_json(only: %i[id name bg_color_hex text_color_hex]),
+        followed_tags: @user.cached_followed_tags.to_json(only: %i[id name bg_color_hex text_color_hex hotness_score], methods: [:points]),
         followed_user_ids: @user.cached_following_users_ids,
+        followed_organization_ids: @user.cached_following_organizations_ids,
         reading_list_ids: ReadingList.new(@user).cached_ids_of_articles,
         saw_onboarding: @user.saw_onboarding,
         checked_code_of_conduct: @user.checked_code_of_conduct,
         number_of_comments: @user.comments.count,
         display_sponsors: @user.display_sponsors,
-        trusted: @user.trusted
+        trusted: @user.trusted,
+        experience_level: @user.experience_level
       }
     end
   end
@@ -58,5 +62,13 @@ class AsyncInfoController < ApplicationController
     #{current_user&.checked_code_of_conduct}__
     #{current_user&.articles_count}__
     #{cookies[:remember_user_token]}"
+  end
+
+  private
+
+  def occasionally_update_analytics
+    if Rails.env.production? && rand(25) == 1
+      ArticleAnalyticsFetcher.new.delay.update_analytics(@user.id)
+    end
   end
 end

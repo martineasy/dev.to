@@ -10,8 +10,8 @@ abort("The Rails environment is running in production mode!") if Rails.env.produ
 require "algolia/webmock"
 require "pundit/matchers"
 require "pundit/rspec"
-require "stream_rails"
 require "webmock/rspec"
+require "test_prof/recipes/rspec/before_all"
 
 # Requires supporting ruby files with custom matchers and macros, etc, in
 # spec/support/ and its subdirectories. Files matching `spec/**/*_spec.rb` are
@@ -27,6 +27,8 @@ require "webmock/rspec"
 # require only the support files necessary.
 
 Dir[Rails.root.join("spec/support/**/*.rb")].each { |f| require f }
+Dir[Rails.root.join("spec/features/shared_examples/**/*.rb")].each { |f| require f }
+Dir[Rails.root.join("spec/models/shared_examples/**/*.rb")].each { |f| require f }
 
 # Checks for pending migrations before tests are run.
 # If you are not using ActiveRecord, you can remove this line.
@@ -42,9 +44,9 @@ RSpec.configure do |config|
   config.include Devise::Test::ControllerHelpers, type: :controller
   config.include Devise::Test::ControllerHelpers, type: :view
   config.include Devise::Test::IntegrationHelpers, type: :feature
+  config.include Devise::Test::IntegrationHelpers, type: :request
   config.include FactoryBot::Syntax::Methods
   config.include OmniauthMacros
-  config.include RequestSpecHelper, type: :request
 
   config.before do
     ActiveRecord::Base.observers.disable :all # <-- Turn 'em all off!
@@ -75,22 +77,14 @@ RSpec.configure do |config|
     stub_request(:post, /api.bufferapp.com/).
       to_return(status: 200, body: { fake_text: "so fake" }.to_json, headers: {})
 
-    # stub_request(:any, /api.getstream.io/).to_rack(FakeStream)
-
     # for twitter image cdn
     stub_request(:get, /twimg.com/).
       to_return(status: 200, body: "", headers: {})
 
     stub_request(:any, /api.mailchimp.com/).
       to_return(status: 200, body: "", headers: {})
-
-    stub_request(:post, /us-east-api.stream-io-api.com\/api\/v1.0\/feed\/user/).
-      to_return(status: 200, body: "{}", headers: {})
-
-    stub_request(:get, /us-east-api.stream-io-api.com\/api/).to_rack(FakeStream)
   end
 
-  StreamRails.enabled = false
   OmniAuth.config.test_mode = true
 
   config.infer_spec_type_from_file_location!
